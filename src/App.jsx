@@ -237,13 +237,13 @@ export default function App(){
   // ─── DIRECT-SAVE SETTERS (only fire on user action, never on load) ────────
   const db=(key,val)=>supabase.from("app_data").upsert({key,data:val},{onConflict:"key"});
 
-  const saveItems=updater=>setItems(prev=>{const next=typeof updater==="function"?updater(prev):updater;db("grf_items_v6",next);return next;});
-  const saveSettings=updater=>setSettings(prev=>{const next=typeof updater==="function"?updater(prev):updater;db("grf_settings_v6",next);return next;});
-  const saveOrders=updater=>setOrders(prev=>{const next=typeof updater==="function"?updater(prev):updater;db("grf_orders_v6",next);return next;});
-  const saveMarketPlan=updater=>setMarketPlan(prev=>{const next=typeof updater==="function"?updater(prev):updater;db("grf_market_v6",next);return next;});
-  const saveRows=updater=>setRows(prev=>{const next=typeof updater==="function"?updater(prev):updater;db("grf_rows_v1",next);return next;});
-  const saveRowConfig=updater=>setRowConfig(prev=>{const next=typeof updater==="function"?updater(prev):updater;db("grf_rowconfig_v1",next);return next;});
-  const saveJobLogs=updater=>setJobLogs(prev=>{const next=typeof updater==="function"?updater(prev):updater;db("grf_joblogs_v1",next);return next;});
+  const saveItems=updater=>setItems(prev=>{const next=typeof updater==="function"?updater(prev):updater;setTimeout(()=>db("grf_items_v6",next),0);return next;});
+  const saveSettings=updater=>setSettings(prev=>{const next=typeof updater==="function"?updater(prev):updater;setTimeout(()=>db("grf_settings_v6",next),0);return next;});
+  const saveOrders=updater=>setOrders(prev=>{const next=typeof updater==="function"?updater(prev):updater;setTimeout(()=>db("grf_orders_v6",next),0);return next;});
+  const saveMarketPlan=updater=>setMarketPlan(prev=>{const next=typeof updater==="function"?updater(prev):updater;setTimeout(()=>db("grf_market_v6",next),0);return next;});
+  const saveRows=updater=>setRows(prev=>{const next=typeof updater==="function"?updater(prev):updater;setTimeout(()=>db("grf_rows_v1",next),0);return next;});
+  const saveRowConfig=updater=>setRowConfig(prev=>{const next=typeof updater==="function"?updater(prev):updater;setTimeout(()=>db("grf_rowconfig_v1",next),0);return next;});
+  const saveJobLogs=updater=>setJobLogs(prev=>{const next=typeof updater==="function"?updater(prev):updater;setTimeout(()=>db("grf_joblogs_v1",next),0);return next;});
 
   const updateItem=(id,patch)=>saveItems(is=>is.map(i=>i.id===id?{...i,...patch}:i));
   const updateRow=(id,patch)=>saveRows(rs=>rs.map(r=>r.id===id?{...r,...patch}:r));
