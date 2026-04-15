@@ -219,6 +219,21 @@ export default function App(){
     loadAll();
   },[]);
 
+  // ─── REALTIME SYNC ───────────────────────────────────────────────────────
+  useEffect(()=>{
+    const channel=supabase.channel("app_data_changes").on("postgres_changes",{event:"UPDATE",schema:"public",table:"app_data"},payload=>{
+      const {key,data}=payload.new;
+      if(key==="grf_items_v6") setItems(migrateItems(data));
+      else if(key==="grf_settings_v6") setSettings(data);
+      else if(key==="grf_orders_v6") setOrders(data);
+      else if(key==="grf_market_v6") setMarketPlan(data);
+      else if(key==="grf_rows_v1") setRows(data);
+      else if(key==="grf_rowconfig_v1") setRowConfig(data);
+      else if(key==="grf_joblogs_v1") setJobLogs(data);
+    }).subscribe(status=>console.log("REALTIME STATUS:",status));
+    return()=>supabase.removeChannel(channel);
+  },[]);
+
   // ─── SAVE TO SUPABASE ON CHANGE ──────────────────────────────────────────
   const dbSave=(key,val)=>supabase.from("app_data").upsert({key,data:val},{onConflict:"key"});
 
