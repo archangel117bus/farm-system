@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "./supabase";
 
 // ─── FRESHNESS WINDOWS ────────────────────────────────────────────────────────
@@ -199,12 +199,13 @@ export default function App(){
   const [tab,setTab]=useState("stock");
   const [showLogin,setShowLogin]=useState(false);
   const [dbLoaded,setDbLoaded]=useState(false);
+  const saveEnabled=useRef(false);
 
   // ─── LOAD FROM SUPABASE ON MOUNT ─────────────────────────────────────────
   useEffect(()=>{
     async function loadAll(){
-      const {data,error}=await supabase.from("app_data").select("*");
-      if(data){
+      const {data}=await supabase.from("app_data").select("*");
+      if(data&&data.length>0){
         const m=Object.fromEntries(data.map(r=>[r.key,r.data]));
         if(m.grf_items_v6) setItems(migrateItems(m.grf_items_v6));
         if(m.grf_settings_v6) setSettings(m.grf_settings_v6);
@@ -213,8 +214,19 @@ export default function App(){
         if(m.grf_rows_v1) setRows(m.grf_rows_v1);
         if(m.grf_rowconfig_v1) setRowConfig(m.grf_rowconfig_v1);
         if(m.grf_joblogs_v1) setJobLogs(m.grf_joblogs_v1);
+      } else {
+        await Promise.all([
+          supabase.from("app_data").upsert({key:"grf_items_v6",data:SEED_ITEMS},{onConflict:"key"}),
+          supabase.from("app_data").upsert({key:"grf_settings_v6",data:SEED_SETTINGS},{onConflict:"key"}),
+          supabase.from("app_data").upsert({key:"grf_orders_v6",data:[]},{onConflict:"key"}),
+          supabase.from("app_data").upsert({key:"grf_market_v6",data:{}},{onConflict:"key"}),
+          supabase.from("app_data").upsert({key:"grf_rows_v1",data:SEED_ROWS},{onConflict:"key"}),
+          supabase.from("app_data").upsert({key:"grf_rowconfig_v1",data:SEED_ROW_CONFIG},{onConflict:"key"}),
+          supabase.from("app_data").upsert({key:"grf_joblogs_v1",data:[]},{onConflict:"key"}),
+        ]);
       }
       setDbLoaded(true);
+      setTimeout(()=>{saveEnabled.current=true;},500);
     }
     loadAll();
   },[]);
@@ -237,13 +249,13 @@ export default function App(){
   // ─── SAVE TO SUPABASE ON CHANGE ──────────────────────────────────────────
   const dbSave=(key,val)=>supabase.from("app_data").upsert({key,data:val},{onConflict:"key"});
 
-  useEffect(()=>{if(dbLoaded)dbSave("grf_items_v6",items);},[items,dbLoaded]);
-  useEffect(()=>{if(dbLoaded)dbSave("grf_settings_v6",settings);},[settings,dbLoaded]);
-  useEffect(()=>{if(dbLoaded)dbSave("grf_orders_v6",orders);},[orders,dbLoaded]);
-  useEffect(()=>{if(dbLoaded)dbSave("grf_market_v6",marketPlan);},[marketPlan,dbLoaded]);
-  useEffect(()=>{if(dbLoaded)dbSave("grf_rows_v1",rows);},[rows,dbLoaded]);
-  useEffect(()=>{if(dbLoaded)dbSave("grf_rowconfig_v1",rowConfig);},[rowConfig,dbLoaded]);
-  useEffect(()=>{if(dbLoaded)dbSave("grf_joblogs_v1",jobLogs);},[jobLogs,dbLoaded]);
+  useEffect(()=>{if(saveEnabled.current)dbSave("grf_items_v6",items);},[items]);
+  useEffect(()=>{if(saveEnabled.current)dbSave("grf_settings_v6",settings);},[settings]);
+  useEffect(()=>{if(saveEnabled.current)dbSave("grf_orders_v6",orders);},[orders]);
+  useEffect(()=>{if(saveEnabled.current)dbSave("grf_market_v6",marketPlan);},[marketPlan]);
+  useEffect(()=>{if(saveEnabled.current)dbSave("grf_rows_v1",rows);},[rows]);
+  useEffect(()=>{if(saveEnabled.current)dbSave("grf_rowconfig_v1",rowConfig);},[rowConfig]);
+  useEffect(()=>{if(saveEnabled.current)dbSave("grf_joblogs_v1",jobLogs);},[jobLogs]);
 
   const updateItem=(id,patch)=>setItems(is=>is.map(i=>i.id===id?{...i,...patch}:i));
   const updateRow=(id,patch)=>setRows(rs=>rs.map(r=>r.id===id?{...r,...patch}:r));
