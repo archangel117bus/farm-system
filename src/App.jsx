@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "./supabase";
 
 // ─── FRESHNESS WINDOWS ────────────────────────────────────────────────────────
@@ -199,7 +199,6 @@ export default function App(){
   const [tab,setTab]=useState("stock");
   const [showLogin,setShowLogin]=useState(false);
   const [dbLoaded,setDbLoaded]=useState(false);
-  const saveEnabled=useRef(false);
 
   // ─── LOAD FROM SUPABASE ON MOUNT ─────────────────────────────────────────
   useEffect(()=>{
@@ -214,19 +213,8 @@ export default function App(){
         if(m.grf_rows_v1) setRows(m.grf_rows_v1);
         if(m.grf_rowconfig_v1) setRowConfig(m.grf_rowconfig_v1);
         if(m.grf_joblogs_v1) setJobLogs(m.grf_joblogs_v1);
-      } else {
-        await Promise.all([
-          supabase.from("app_data").upsert({key:"grf_items_v6",data:SEED_ITEMS},{onConflict:"key"}),
-          supabase.from("app_data").upsert({key:"grf_settings_v6",data:SEED_SETTINGS},{onConflict:"key"}),
-          supabase.from("app_data").upsert({key:"grf_orders_v6",data:[]},{onConflict:"key"}),
-          supabase.from("app_data").upsert({key:"grf_market_v6",data:{}},{onConflict:"key"}),
-          supabase.from("app_data").upsert({key:"grf_rows_v1",data:SEED_ROWS},{onConflict:"key"}),
-          supabase.from("app_data").upsert({key:"grf_rowconfig_v1",data:SEED_ROW_CONFIG},{onConflict:"key"}),
-          supabase.from("app_data").upsert({key:"grf_joblogs_v1",data:[]},{onConflict:"key"}),
-        ]);
       }
       setDbLoaded(true);
-      setTimeout(()=>{saveEnabled.current=true;},500);
     }
     loadAll();
   },[]);
@@ -246,19 +234,19 @@ export default function App(){
     return()=>supabase.removeChannel(channel);
   },[]);
 
-  // ─── SAVE TO SUPABASE ON CHANGE ──────────────────────────────────────────
-  const dbSave=(key,val)=>supabase.from("app_data").upsert({key,data:val},{onConflict:"key"});
+  // ─── DIRECT-SAVE SETTERS (only fire on user action, never on load) ────────
+  const db=(key,val)=>supabase.from("app_data").upsert({key,data:val},{onConflict:"key"});
 
-  useEffect(()=>{if(saveEnabled.current)dbSave("grf_items_v6",items);},[items]);
-  useEffect(()=>{if(saveEnabled.current)dbSave("grf_settings_v6",settings);},[settings]);
-  useEffect(()=>{if(saveEnabled.current)dbSave("grf_orders_v6",orders);},[orders]);
-  useEffect(()=>{if(saveEnabled.current)dbSave("grf_market_v6",marketPlan);},[marketPlan]);
-  useEffect(()=>{if(saveEnabled.current)dbSave("grf_rows_v1",rows);},[rows]);
-  useEffect(()=>{if(saveEnabled.current)dbSave("grf_rowconfig_v1",rowConfig);},[rowConfig]);
-  useEffect(()=>{if(saveEnabled.current)dbSave("grf_joblogs_v1",jobLogs);},[jobLogs]);
+  const saveItems=updater=>setItems(prev=>{const next=typeof updater==="function"?updater(prev):updater;db("grf_items_v6",next);return next;});
+  const saveSettings=updater=>setSettings(prev=>{const next=typeof updater==="function"?updater(prev):updater;db("grf_settings_v6",next);return next;});
+  const saveOrders=updater=>setOrders(prev=>{const next=typeof updater==="function"?updater(prev):updater;db("grf_orders_v6",next);return next;});
+  const saveMarketPlan=updater=>setMarketPlan(prev=>{const next=typeof updater==="function"?updater(prev):updater;db("grf_market_v6",next);return next;});
+  const saveRows=updater=>setRows(prev=>{const next=typeof updater==="function"?updater(prev):updater;db("grf_rows_v1",next);return next;});
+  const saveRowConfig=updater=>setRowConfig(prev=>{const next=typeof updater==="function"?updater(prev):updater;db("grf_rowconfig_v1",next);return next;});
+  const saveJobLogs=updater=>setJobLogs(prev=>{const next=typeof updater==="function"?updater(prev):updater;db("grf_joblogs_v1",next);return next;});
 
-  const updateItem=(id,patch)=>setItems(is=>is.map(i=>i.id===id?{...i,...patch}:i));
-  const updateRow=(id,patch)=>setRows(rs=>rs.map(r=>r.id===id?{...r,...patch}:r));
+  const updateItem=(id,patch)=>saveItems(is=>is.map(i=>i.id===id?{...i,...patch}:i));
+  const updateRow=(id,patch)=>saveRows(rs=>rs.map(r=>r.id===id?{...r,...patch}:r));
   const agingItems=items.filter(i=>Array.isArray(i.batches)&&i.batches.some(b=>b.qty>0&&["aging","usefirst"].includes(getFreshness(b.harvestedOn,i.freshnessType))));
 
   const TABS=[{key:"stock",icon:"📦",label:"Stock"},{key:"market",icon:"🏪",label:"Market"},{key:"log",icon:"✋",label:"Log"},{key:"garden",icon:"🌱",label:"Garden"},{key:"public",icon:"🌐",label:"Public"}];
@@ -333,11 +321,11 @@ export default function App(){
       </header>
 
       <div className="content">
-        {tab==="stock"&&<StockTab items={items} setItems={setItems} updateItem={updateItem} isAdmin={isAdmin} agingItems={agingItems}/>}
-        {tab==="market"&&<MarketTab items={items} updateItem={updateItem} marketPlan={marketPlan} setMarketPlan={setMarketPlan}/>}
-        {tab==="log"&&<LogTab items={items} updateItem={updateItem} settings={settings} rows={rows} setRows={setRows} rowConfig={rowConfig} jobLogs={jobLogs} setJobLogs={setJobLogs}/>}
-        {tab==="garden"&&<GardenTab rows={rows} setRows={setRows} rowConfig={rowConfig} setRowConfig={setRowConfig} jobLogs={jobLogs} setJobLogs={setJobLogs} isAdmin={isAdmin} settings={settings}/>}
-        {tab==="public"&&<PublicTab items={items} updateItem={updateItem} orders={orders} setOrders={setOrders} settings={settings} setSettings={setSettings} isAdmin={isAdmin}/>}
+        {tab==="stock"&&<StockTab items={items} setItems={saveItems} updateItem={updateItem} isAdmin={isAdmin} agingItems={agingItems}/>}
+        {tab==="market"&&<MarketTab items={items} updateItem={updateItem} marketPlan={marketPlan} setMarketPlan={saveMarketPlan}/>}
+        {tab==="log"&&<LogTab items={items} updateItem={updateItem} settings={settings} rows={rows} setRows={saveRows} rowConfig={rowConfig} jobLogs={jobLogs} setJobLogs={saveJobLogs}/>}
+        {tab==="garden"&&<GardenTab rows={rows} setRows={saveRows} rowConfig={rowConfig} setRowConfig={saveRowConfig} jobLogs={jobLogs} setJobLogs={saveJobLogs} isAdmin={isAdmin} settings={settings}/>}
+        {tab==="public"&&<PublicTab items={items} updateItem={updateItem} orders={orders} setOrders={saveOrders} settings={settings} setSettings={saveSettings} isAdmin={isAdmin}/>}
       </div>
 
       <nav className="bottom-nav">
