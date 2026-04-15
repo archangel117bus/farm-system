@@ -350,6 +350,7 @@ function AdminLogin({password,onSuccess,onClose}){
 
 // ─── STOCK TAB ────────────────────────────────────────────────────────────────
 function StockTab({items,setItems,updateItem,isAdmin,agingItems}){
+  console.log("StockTab setItems is saveItems?", setItems.toString().includes("setTimeout"));
   const [cat,setCat]=useState("All"),[showAdd,setShowAdd]=useState(false),[editItem,setEditItem]=useState(null),[showZero,setShowZero]=useState(false),[expanded,setExpanded]=useState({}),[pullModal,setPullModal]=useState(null);
   const toggleExpand=id=>setExpanded(e=>({...e,[id]:!e[id]}));
   const filtered=items.filter(i=>(cat==="All"||i.cat===cat)&&(showZero||getTotalQty(i)>0)).sort((a,b)=>{const o={fresh:0,usefirst:1,aging:2,expired:3,unknown:4};return o[getBestFreshness(a)]-o[getBestFreshness(b)];});
