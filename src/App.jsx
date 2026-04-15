@@ -235,7 +235,7 @@ export default function App(){
   },[]);
 
   // ─── DIRECT-SAVE SETTERS (only fire on user action, never on load) ────────
-  const db=(key,val)=>supabase.from("app_data").upsert({key,data:val},{onConflict:"key"});
+  const db=(key,val)=>{console.log("SAVING",key,JSON.stringify(val).slice(0,100));return supabase.from("app_data").upsert({key,data:val},{onConflict:"key"});}
 
   const saveItems=updater=>setItems(prev=>{const next=typeof updater==="function"?updater(prev):updater;setTimeout(()=>db("grf_items_v6",next),0);return next;});
   const saveSettings=updater=>setSettings(prev=>{const next=typeof updater==="function"?updater(prev):updater;setTimeout(()=>db("grf_settings_v6",next),0);return next;});
