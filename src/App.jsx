@@ -221,7 +221,7 @@ export default function App(){
 
   // ─── REALTIME SYNC ───────────────────────────────────────────────────────
   useEffect(()=>{
-    const channel=supabase.channel("app_data_changes").on("postgres_changes",{event:"UPDATE",schema:"public",table:"app_data"},payload=>{
+    const channel=supabase.channel("app_data_changes").on("postgres_changes",{event:"*",schema:"public",table:"app_data"},payload=>{
       const {key,data}=payload.new;
       if(key==="grf_items_v6") setItems(migrateItems(data));
       else if(key==="grf_settings_v6") setSettings(data);
