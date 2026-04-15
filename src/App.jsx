@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { supabase } from "./supabase";
 
 // ─── FRESHNESS WINDOWS ────────────────────────────────────────────────────────
 const FW = {
@@ -185,35 +186,57 @@ const SEED_ROWS=[
   ...Array.from({length:20},(_,i)=>({id:i+20,side:"west",tunnel:"Tunnel 3",crop:"",notes:"",conditionTags:[],inAmendment:false,amendStepIndex:-1,wateringZone:"",pestFlags:[],readiness:"Unknown",plantedDate:""})),
 ];
 
-const load=(k,fb)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):fb;}catch{return fb;}};
-const save=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}};
-
 // ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function App(){
-  const [items,setItems]=useState(()=>migrateItems(load("grf_items_v6",SEED_ITEMS)));
-  const [settings,setSettings]=useState(()=>load("grf_settings_v6",SEED_SETTINGS));
-  const [orders,setOrders]=useState(()=>load("grf_orders_v6",[]));
-  const [marketPlan,setMarketPlan]=useState(()=>load("grf_market_v6",{}));
-  const [rows,setRows]=useState(()=>load("grf_rows_v1",SEED_ROWS));
-  const [rowConfig,setRowConfig]=useState(()=>load("grf_rowconfig_v1",SEED_ROW_CONFIG));
-  const [jobLogs,setJobLogs]=useState(()=>load("grf_joblogs_v1",[]));
+  const [items,setItems]=useState(SEED_ITEMS);
+  const [settings,setSettings]=useState(SEED_SETTINGS);
+  const [orders,setOrders]=useState([]);
+  const [marketPlan,setMarketPlan]=useState({});
+  const [rows,setRows]=useState(SEED_ROWS);
+  const [rowConfig,setRowConfig]=useState(SEED_ROW_CONFIG);
+  const [jobLogs,setJobLogs]=useState([]);
   const [isAdmin,setIsAdmin]=useState(false);
   const [tab,setTab]=useState("stock");
   const [showLogin,setShowLogin]=useState(false);
+  const [dbLoaded,setDbLoaded]=useState(false);
 
-  useEffect(()=>save("grf_items_v6",items),[items]);
-  useEffect(()=>save("grf_settings_v6",settings),[settings]);
-  useEffect(()=>save("grf_orders_v6",orders),[orders]);
-  useEffect(()=>save("grf_market_v6",marketPlan),[marketPlan]);
-  useEffect(()=>save("grf_rows_v1",rows),[rows]);
-  useEffect(()=>save("grf_rowconfig_v1",rowConfig),[rowConfig]);
-  useEffect(()=>save("grf_joblogs_v1",jobLogs),[jobLogs]);
+  // ─── LOAD FROM SUPABASE ON MOUNT ─────────────────────────────────────────
+  useEffect(()=>{
+    async function loadAll(){
+      const {data,error}=await supabase.from("app_data").select("*");
+      if(data){
+        const m=Object.fromEntries(data.map(r=>[r.key,r.data]));
+        if(m.grf_items_v6) setItems(migrateItems(m.grf_items_v6));
+        if(m.grf_settings_v6) setSettings(m.grf_settings_v6);
+        if(m.grf_orders_v6) setOrders(m.grf_orders_v6);
+        if(m.grf_market_v6) setMarketPlan(m.grf_market_v6);
+        if(m.grf_rows_v1) setRows(m.grf_rows_v1);
+        if(m.grf_rowconfig_v1) setRowConfig(m.grf_rowconfig_v1);
+        if(m.grf_joblogs_v1) setJobLogs(m.grf_joblogs_v1);
+      }
+      setDbLoaded(true);
+    }
+    loadAll();
+  },[]);
+
+  // ─── SAVE TO SUPABASE ON CHANGE ──────────────────────────────────────────
+  const dbSave=(key,val)=>supabase.from("app_data").upsert({key,data:val},{onConflict:"key"});
+
+  useEffect(()=>{if(dbLoaded)dbSave("grf_items_v6",items);},[items,dbLoaded]);
+  useEffect(()=>{if(dbLoaded)dbSave("grf_settings_v6",settings);},[settings,dbLoaded]);
+  useEffect(()=>{if(dbLoaded)dbSave("grf_orders_v6",orders);},[orders,dbLoaded]);
+  useEffect(()=>{if(dbLoaded)dbSave("grf_market_v6",marketPlan);},[marketPlan,dbLoaded]);
+  useEffect(()=>{if(dbLoaded)dbSave("grf_rows_v1",rows);},[rows,dbLoaded]);
+  useEffect(()=>{if(dbLoaded)dbSave("grf_rowconfig_v1",rowConfig);},[rowConfig,dbLoaded]);
+  useEffect(()=>{if(dbLoaded)dbSave("grf_joblogs_v1",jobLogs);},[jobLogs,dbLoaded]);
 
   const updateItem=(id,patch)=>setItems(is=>is.map(i=>i.id===id?{...i,...patch}:i));
   const updateRow=(id,patch)=>setRows(rs=>rs.map(r=>r.id===id?{...r,...patch}:r));
   const agingItems=items.filter(i=>Array.isArray(i.batches)&&i.batches.some(b=>b.qty>0&&["aging","usefirst"].includes(getFreshness(b.harvestedOn,i.freshnessType))));
 
   const TABS=[{key:"stock",icon:"📦",label:"Stock"},{key:"market",icon:"🏪",label:"Market"},{key:"log",icon:"✋",label:"Log"},{key:"garden",icon:"🌱",label:"Garden"},{key:"public",icon:"🌐",label:"Public"}];
+
+  if(!dbLoaded) return(<div style={{fontFamily:"'Lora',Georgia,serif",background:"#f5f2ed",minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><div style={{textAlign:"center"}}><div style={{fontSize:48,marginBottom:12}}>🌿</div><p style={{fontFamily:"'JetBrains Mono',monospace",fontSize:12,color:"#9a8a72",letterSpacing:"0.1em"}}>LOADING FARM DATA…</p></div></div>);
 
   return(
     <div style={{fontFamily:"'Lora',Georgia,serif",background:"#f5f2ed",minHeight:"100vh",maxWidth:580,margin:"0 auto"}}>
@@ -442,10 +465,8 @@ function LogTab({items,updateItem,settings,rows,setRows,rowConfig,jobLogs,setJob
       <div className="bigbtn" style={{gridColumn:"1/-1",padding:"18px 14px",border:"2px solid #0a4a3a",background:"#f0faf7"}} onClick={()=>setShowJobLog(true)}><div style={{fontSize:36,marginBottom:6}}>🌿</div><div style={{fontSize:15,fontWeight:700,color:"#0a4a3a"}}>Log Field Job</div><div className="mono" style={{fontSize:10,color:"#2a7a5a",marginTop:3}}>Record work done in the rows</div></div>
     </div>}
 
-    {/* PIPELINE MODE */}
     {mode==="pipeline"&&<PipelineModeUI items={items} updateItem={updateItem} settings={settings} onBack={()=>setMode(null)}/>}
 
-    {/* HARVEST / FRIDGE */}
     {(mode==="picked"||mode==="pulled")&&<>
       {!crew&&<div><div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}><button className="btn btn-ghost btn-sm" onClick={()=>setMode(null)}>← Back</button><span style={{fontWeight:700,fontSize:15}}>Who is logging?</span></div><div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>{(settings.crew||[]).map(name=><button key={name} className="bigbtn" style={{padding:"18px 14px"}} onClick={()=>setCrew(name)}><div style={{fontSize:28,marginBottom:6}}>👤</div><div style={{fontWeight:600,fontSize:14}}>{name}</div></button>)}</div></div>}
       {crew&&!sel&&<div>
@@ -584,16 +605,12 @@ function JobLogModal({rows,setRows,rowConfig,jobLogs,setJobLogs,settings,onClose
         <h2 style={{fontSize:17,fontWeight:700}}>🌿 Log Field Job</h2>
         <button className="btn-icon" onClick={onClose}>✕</button>
       </div>
-
-      {/* Progress dots */}
       <div style={{display:"flex",gap:6,marginBottom:20,justifyContent:"center"}}>
         {["Who","Job","Rows","Status","Confirm"].map((s,i)=><div key={s} style={{display:"flex",alignItems:"center",gap:6}}>
           <div style={{width:24,height:24,borderRadius:12,background:i<=step?"#1a4a0a":"#e2d9cc",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'JetBrains Mono',monospace",fontSize:10,color:i<=step?"#e8f5d8":"#9a8a72",fontWeight:600}}>{i+1}</div>
           {i<4&&<div style={{width:16,height:2,background:i<step?"#1a4a0a":"#e2d9cc"}}/>}
         </div>)}
       </div>
-
-      {/* STEP 0: Who */}
       {step===0&&<div>
         <div className="mono" style={{fontSize:11,color:"#9a8a72",marginBottom:12}}>WHO IS DOING THIS JOB?</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
@@ -601,8 +618,6 @@ function JobLogModal({rows,setRows,rowConfig,jobLogs,setJobLogs,settings,onClose
         </div>
         <button className="btn btn-green" style={{width:"100%",padding:13}} disabled={!crew} onClick={()=>setStep(1)}>Next →</button>
       </div>}
-
-      {/* STEP 1: Job type */}
       {step===1&&<div>
         <div className="mono" style={{fontSize:11,color:"#9a8a72",marginBottom:12}}>WHAT TYPE OF JOB?</div>
         <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
@@ -614,15 +629,11 @@ function JobLogModal({rows,setRows,rowConfig,jobLogs,setJobLogs,settings,onClose
         </div>
         <div style={{display:"flex",gap:10}}><button className="btn btn-ghost" style={{flex:1,padding:12}} onClick={()=>setStep(0)}>← Back</button><button className="btn btn-green" style={{flex:2,padding:13}} disabled={!jobType} onClick={()=>setStep(2)}>Next →</button></div>
       </div>}
-
-      {/* STEP 2: Rows */}
       {step===2&&<div>
         <div className="mono" style={{fontSize:11,color:"#9a8a72",marginBottom:12}}>WHICH ROWS? (TAP TO SELECT)</div>
         <RowMultiSelect rows={rows} rowConfig={rowConfig} selected={selRows} onToggle={toggleRowSel} mapMode="none"/>
         <div style={{display:"flex",gap:10,marginTop:16}}><button className="btn btn-ghost" style={{flex:1,padding:12}} onClick={()=>setStep(1)}>← Back</button><button className="btn btn-green" style={{flex:2,padding:13}} onClick={()=>setStep(3)}>Next →</button></div>
       </div>}
-
-      {/* STEP 3: Apply status changes */}
       {step===3&&<div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
           <div className="mono" style={{fontSize:11,color:"#9a8a72"}}>UPDATE ROW STATUS?</div>
@@ -638,8 +649,6 @@ function JobLogModal({rows,setRows,rowConfig,jobLogs,setJobLogs,settings,onClose
         </div>}
         <div style={{display:"flex",gap:10,marginTop:16}}><button className="btn btn-ghost" style={{flex:1,padding:12}} onClick={()=>setStep(2)}>← Back</button><button className="btn btn-green" style={{flex:2,padding:13}} onClick={()=>setStep(4)}>Next →</button></div>
       </div>}
-
-      {/* STEP 4: Date + Notes + Confirm */}
       {step===4&&<div>
         <div style={{display:"flex",flexDirection:"column",gap:11,marginBottom:16}}>
           <div><div className="mono" style={{fontSize:11,color:"#9a8a72",marginBottom:6}}>DATE</div><input type="date" value={date} onChange={e=>setDate(e.target.value)} style={{colorScheme:"light"}}/></div>
@@ -705,20 +714,14 @@ function GardenTab({rows,setRows,rowConfig,setRowConfig,jobLogs,setJobLogs,isAdm
         {isAdmin&&<button className="btn btn-ghost btn-sm" style={{fontSize:10}} onClick={()=>setShowAdmin(true)}>⚙️</button>}
       </div>
     </div>
-
-    {/* Map mode pills */}
     <div style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:6,marginBottom:16}}>
       {MAP_MODES.map(m=><button key={m.key} className={`map-mode-pill ${mapMode===m.key?"active":""}`} onClick={()=>setMapMode(m.key)}>{m.icon} {m.label}</button>)}
     </div>
-
-    {/* Map */}
     <div className="card" style={{padding:"12px 10px",marginBottom:14}}>
       <div style={{display:"grid",gridTemplateColumns:"1fr 6px 1fr",gap:"3px 0"}}>
-        {/* Headers */}
         <div style={{textAlign:"center",paddingBottom:6}}><span className="mono" style={{fontSize:9,color:"#9a8a72",letterSpacing:"0.1em"}}>▲ NORTH · WEST (T3)</span></div>
         <div/>
         <div style={{textAlign:"center",paddingBottom:6}}><span className="mono" style={{fontSize:9,color:"#9a8a72",letterSpacing:"0.1em"}}>▲ NORTH · EAST (T1)</span></div>
-
         {Array.from({length:maxLen},(_,i)=>{
           const w=westRows[i],e=eastRows[i];
           const wColor=w?getRowColor(w):"transparent";
@@ -752,8 +755,6 @@ function GardenTab({rows,setRows,rowConfig,setRowConfig,jobLogs,setJobLogs,isAdm
         <div style={{textAlign:"center",paddingTop:6}}><span className="mono" style={{fontSize:9,color:"#9a8a72",letterSpacing:"0.1em"}}>▼ SOUTH</span></div>
       </div>
     </div>
-
-    {/* Legend */}
     <div className="card" style={{padding:"10px 14px",marginBottom:14}}>
       <div className="stitle">Legend — {MAP_MODES.find(m=>m.key===mapMode)?.label}</div>
       <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
@@ -761,8 +762,6 @@ function GardenTab({rows,setRows,rowConfig,setRowConfig,jobLogs,setJobLogs,isAdm
         {getLegendItems().length===0&&<span className="mono" style={{fontSize:10,color:"#9a8a72"}}>No data yet</span>}
       </div>
     </div>
-
-    {/* Recent job log */}
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
       <div className="stitle" style={{marginBottom:0}}>Recent Jobs</div>
       <button className="btn btn-ghost btn-sm" style={{fontSize:10}} onClick={()=>setShowJobHistory(s=>!s)}>{showJobHistory?"▲ Hide":"▼ Show all"}</button>
@@ -790,7 +789,6 @@ function GardenTab({rows,setRows,rowConfig,setRowConfig,jobLogs,setJobLogs,isAdm
       </div>);
     })}
     {jobLogs.length===0&&<div className="card" style={{padding:"24px",textAlign:"center"}}><div style={{fontSize:36,marginBottom:8}}>📋</div><p className="mono" style={{fontSize:11,color:"#9a8a72"}}>No jobs logged yet</p></div>}
-
     {selRow&&<RowDetailModal row={selRow} rows={rows} setRows={setRows} rowConfig={rowConfig} isAdmin={isAdmin} jobLogs={jobLogs} onClose={()=>setSelRow(null)}/>}
     {showAdmin&&isAdmin&&<RowAdminModal rowConfig={rowConfig} setRowConfig={setRowConfig} onClose={()=>setShowAdmin(false)}/>}
     {showJobLog&&<JobLogModal rows={rows} setRows={setRows} rowConfig={rowConfig} jobLogs={jobLogs} setJobLogs={setJobLogs} settings={settings} onClose={()=>setShowJobLog(false)}/>}
@@ -816,28 +814,20 @@ function RowDetailModal({row,rows,setRows,rowConfig,isAdmin,jobLogs,onClose}){
           <button className="btn-icon" onClick={onClose}>✕</button>
         </div>
       </div>
-
       {!editing&&<div style={{display:"flex",flexDirection:"column",gap:14}}>
-        {/* Crop */}
         <div className="card" style={{padding:"12px 14px"}}>
           <div className="stitle">Crop</div>
           {row.crop?<div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:14,height:14,borderRadius:7,background:rowConfig.cropTypes.find(c=>c.name===row.crop)?.color||"#9a8a72"}}/><span style={{fontSize:15,fontWeight:600}}>{row.crop}</span></div>:<span style={{fontSize:13,color:"#9a8a72",fontStyle:"italic"}}>No crop set</span>}
           {row.plantedDate&&<div className="mono" style={{fontSize:10,color:"#9a8a72",marginTop:4}}>Planted: {row.plantedDate} · {daysOld(row.plantedDate)}d ago</div>}
         </div>
-
-        {/* Readiness */}
         <div className="card" style={{padding:"12px 14px"}}>
           <div className="stitle">Harvest Readiness</div>
           {(()=>{const rl=rowConfig.readinessLevels.find(r=>r.name===row.readiness);return(<div style={{display:"flex",alignItems:"center",gap:8}}>{rl&&<div style={{width:12,height:12,borderRadius:6,background:rl.color}}/>}<span style={{fontSize:13,fontWeight:600}}>{row.readiness||"Unknown"}</span></div>);})()}
         </div>
-
-        {/* Condition Tags */}
         <div className="card" style={{padding:"12px 14px"}}>
           <div className="stitle">Condition Tags</div>
           {row.conditionTags.length>0?<div style={{display:"flex",flexWrap:"wrap",gap:6}}>{row.conditionTags.map(t=>{const cfg=rowConfig.conditionTags.find(x=>x.name===t);return(<span key={t} style={{padding:"4px 10px",borderRadius:12,background:cfg?cfg.color+"22":"#f0ebe2",border:`1.5px solid ${cfg?cfg.color:"#d0c4b4"}`,fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:cfg?cfg.color:"#6a5a42"}}>{t}</span>);})}</div>:<span style={{fontSize:13,color:"#9a8a72",fontStyle:"italic"}}>None</span>}
         </div>
-
-        {/* Amendment */}
         {row.inAmendment&&<div className="card" style={{padding:"12px 14px",background:"#fff8ee",border:"1px solid #f0c060"}}>
           <div className="stitle" style={{color:"#a05008"}}>In Amendment</div>
           <div style={{display:"flex",flexDirection:"column",gap:4}}>
@@ -848,27 +838,17 @@ function RowDetailModal({row,rows,setRows,rowConfig,isAdmin,jobLogs,onClose}){
             </div>)}
           </div>
         </div>}
-
-        {/* Watering Zone */}
         <div className="card" style={{padding:"12px 14px"}}>
           <div className="stitle">Watering Zone</div>
           {row.wateringZone?(()=>{const wz=rowConfig.wateringZones.find(w=>w.name===row.wateringZone);return(<div style={{display:"flex",alignItems:"center",gap:8}}>{wz&&<div style={{width:12,height:12,borderRadius:6,background:wz.color}}/>}<span style={{fontSize:13,fontWeight:600}}>{row.wateringZone}</span></div>);})():<span style={{fontSize:13,color:"#9a8a72",fontStyle:"italic"}}>Not assigned</span>}
         </div>
-
-        {/* Pests */}
         {row.pestFlags.length>0&&<div className="card" style={{padding:"12px 14px",background:"#fff5f5",border:"1px solid #fca5a5"}}>
           <div className="stitle" style={{color:"#8b1a1a"}}>⚠️ Pest Issues</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:6}}>{row.pestFlags.map(p=>{const cfg=rowConfig.pestTypes.find(x=>x.name===p);return(<span key={p} style={{padding:"4px 10px",borderRadius:12,background:cfg?cfg.color+"22":"#fee2e2",border:`1.5px solid ${cfg?cfg.color:"#f87171"}`,fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:cfg?cfg.color:"#8b1a1a"}}>{p}</span>);})}</div>
         </div>}
-
-        {/* Notes */}
         {row.notes&&<div className="card" style={{padding:"12px 14px"}}><div className="stitle">Notes</div><p style={{fontSize:13,color:"#6a5a42",fontStyle:"italic"}}>"{row.notes}"</p></div>}
-
-        {/* Recent jobs */}
         {rowJobs.length>0&&<div><div className="stitle">Recent Jobs on Row {row.id}</div>{rowJobs.map(log=>{const jt=rowConfig.jobTypes.find(j=>j.name===log.type);return(<div key={log.id} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"8px 0",borderBottom:"1px solid #f0ebe2"}}><div style={{width:8,height:8,borderRadius:4,background:jt?.color||"#9a8a72",marginTop:4,flexShrink:0}}/><div><div style={{fontSize:13,fontWeight:600}}>{log.type} <span style={{fontWeight:400,color:"#6a5a42"}}>· {log.crew}</span></div><div className="mono" style={{fontSize:10,color:"#9a8a72"}}>{log.date}</div>{log.notes&&<div style={{fontSize:11,color:"#6a5a42",fontStyle:"italic"}}>"{log.notes}"</div>}</div></div>);})}</div>}
       </div>}
-
-      {/* EDIT MODE */}
       {editing&&<div style={{display:"flex",flexDirection:"column",gap:12}}>
         <div><div className="mono" style={{fontSize:11,color:"#9a8a72",marginBottom:6}}>CROP TYPE</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:6}}>{rowConfig.cropTypes.map(ct=><span key={ct.id} onClick={()=>s("crop",f.crop===ct.name?"":ct.name)} style={{padding:"5px 12px",borderRadius:16,border:`2px solid ${f.crop===ct.name?ct.color:"#d0c4b4"}`,background:f.crop===ct.name?ct.color+"22":"#faf7f2",fontFamily:"'JetBrains Mono',monospace",fontSize:11,cursor:"pointer",color:f.crop===ct.name?ct.color:"#6a5a42"}}>{ct.name}</span>)}</div>
